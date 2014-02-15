@@ -1,0 +1,25 @@
+###C++###
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+
+
+###Mac OSX###
+.DS_Store
+
+
+###SublimeText###
+
+# SublimeText project files
+*.sublime-workspace

@@ -1,14 +1,14 @@
 APP = NavierStokes
-FLAGS = $(shell pkg-config graphicsmath0 --cflags) $(shell sdl2-config --cflags)
-LIBS = $(shell pkg-config graphicsmath0 --libs) $(shell sdl2-config --libs)
+FLAGS = $(shell sdl2-config --cflags) -I$(HOME)/usr/include
+LIBS = $(shell sdl2-config --libs) -lpng -L$(HOME)/usr/lib
 OBJS = fluidmain.o
 all: $(APP)
 
 $(APP) : $(OBJS)
-	g++ -o $@ $< $(FLAGS) $(LIBS) -g
+	g++ -o $@ $< $(FLAGS) $(LIBS) -fwhole-program -flto -Ofast
 
 %.o : %.cpp
-	g++ $< -c $(FLAGS) -g
+	g++ $< -c $(FLAGS) -flto -Ofast -O 
 
 run:
 	./NavierStokes

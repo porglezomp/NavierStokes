@@ -8,6 +8,7 @@
 #include <math.h>
 #include <algorithm>
 #include <utility>
+#include "PngWriter.hpp"
 
 #define SDLCRASH	1
 
@@ -28,13 +29,15 @@ void Project(float*, float*, float*, float*);
 void SetBoundaries(float*, int);
 
 bool running = true;
-const int width = 128, height = 128;
+const int width = 384, height = 216;
 const int upscale = 3;
 const int vieww = width * upscale, viewh = height * upscale;
-const float dt = .01, diff = .001, visc = .01;;
+const float diff = 0, visc = 0;;
+float dt = .01;
 #define size		(width+2) * (height+2)
 #define IX(i, j)	((i) + (j)*(width+2))
 #define XY(i, j)	(((i) - 1) + ((j) - 1)*(width))
+PngWriter writer(width, height);
 
 // Graphics variables
 SDL_Window *window;
@@ -44,6 +47,7 @@ float u[size], u_prev[size];
 float v[size], v_prev[size];
 float dens[size], dens_prev[size];
 SDL_Texture *texture;
+long long a, b;
 
 template <typename T>
 T sgn(T t) { return (t < 0) ? T(-1) : T(1); }
@@ -61,22 +65,39 @@ int main() {
 	if (renderer == NULL) quit(SDLCRASH, "Renderer was NULL");
 	texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
 
+	a = SDL_GetTicks();
 	PopulateGrids();
 
+	int counter = 1;
 	// Mainloop
 	while (running) {
+		b = a;
+		a = SDL_GetTicks();
+		dt = (a - b) / 1000.0;
 		HandleEvents();
 		DensityStep();
 		VelocityStep();
 		UpdatePixels(dens);
 		UploadAndRender();
-		float a = 0;
+		float mass = 0;
 		for (int i = 1; i <= width; i++) {
 			for (int j = 1; j <= height; j++) {
-				a += dens[IX(i, j)];
+				mass += dens[IX(i, j)];
 			}
 		}
-		printf("%f\n", a);
+		for (int x = 1; x <= width; x++) {
+			for (int y = 1; y <= height; y++) {
+				int p = pixels[XY(x, y)];
+				int r = (p & (255<<16))>>16;
+				int g = (p & (255<<8))>>8;
+				int b = (p * 255);
+				writer.set(x-1, y-1, r, g, b);
+			}
+		}
+		char name[32];
+		sprintf(name, "frame%i.png", counter++);
+		writer.write(name);
+		printf("%s %f\n", name, mass);
 	}
 	
 	// Cleanup and quit
@@ -125,11 +146,11 @@ float almostIdentity( float x, float m, float n ) {
 void PopulateGrids() {
 	for (int y = 1; y <= height; y++) {
 		for (int x = 1; x <= width; x++) {
-			float dx = width/2 - x, dy = height/2 - y;
-			float rho = std::min(5 / (sqrt(dx * dx + dy * dy)+1), 1.0);
+			float dx = .5 - (float) x/width, dy = .5 - (float) y/width;
+			float rho = std::min(5.0 / ((dx * dx + dy * dy)*100+1), 1.0);
 			dens[IX(x, y)] = rho;
-			u[IX(x, y)] = -cos(dx/10);//(1/almostIdentity(abs(dx), 2, 1)) * (1/almostIdentity(y, 2, 1)) * sgn(dx) * 10;
-			v[IX(x, y)] = -cos(dx/10);
+			u[IX(x, y)] = -cos(dx*10);//(1/almostIdentity(abs(dx), 2, 1)) * (1/almostIdentity(y, 2, 1)) * sgn(dx) * 10;
+			v[IX(x, y)] = -cos(dx*10);
 		}
 	}
 }

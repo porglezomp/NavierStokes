@@ -24,7 +24,7 @@ void VelocityStep();
 
 void Diffuse(int, float*, float*, float);
 void Advect(int, float*, float*, float*, float*);
-void Project();
+void Project(float*, float*, float*, float*);
 void SetBoundaries(float*, int);
 
 bool running = true;
@@ -66,13 +66,8 @@ int main() {
 	// Mainloop
 	while (running) {
 		HandleEvents();
-		AddForces();
-		std::swap(dens, dens_prev);
-		Diffuse(0, dens, dens_prev, diff);
-		//std::swap(dens, dens_prev);
-		Advect(0, dens, dens_prev, u, v);
-		Diffuse(1, u, u_prev, visc);
-		Move();
+		DensityStep();
+		VelocityStep();
 		UpdatePixels(dens);
 		UploadAndRender();
 		SDL_Delay(100);
@@ -135,7 +130,7 @@ void PopulateGrids() {
 			float rho = std::min(5 / (sqrt(dx * dx + dy * dy)+1), 1.0);
 			dens[IX(x, y)] = rho;
 			u[IX(x, y)] = -cos(dx/10);//(1/almostIdentity(abs(dx), 2, 1)) * (1/almostIdentity(y, 2, 1)) * sgn(dx) * 10;
-			v[IX(x, y)] = -cos(dx/20);
+			v[IX(x, y)] = -cos(dx/10);
 		}
 	}
 }
@@ -162,8 +157,19 @@ void HandleEvents() {
 //  Fluid code
 // ************
 
-void AddForces() {
+void DensityStep() {
+	std::swap(dens, dens_prev);
+	Diffuse(0, dens, dens_prev, diff);
+	std::swap(dens, dens_prev);
+	Advect(0, dens, dens_prev, u, v);
 }
+
+void VelocityStep() {
+	std::swap(u, u_prev); Diffuse(1, u, u_prev, visc);
+	std::swap(v, v_prev); Diffuse(1, v, v_prev, visc);
+	Project(u, v, u_prev, v_prev);
+}
+
 
 void Diffuse(int border, float *cur, float *prev, float diff) {
 	float a = dt * diff * width * height;
@@ -197,7 +203,8 @@ void Advect(int border, float *cur, float *prev, float *u, float *v) {
 	SetBoundaries(cur, border); 
 }
 
-void Move() {
+void Project(float *u, float *v, float *u0, float *v0) {
+
 }
 
 void SetBoundaries(float *dens, int b) { 

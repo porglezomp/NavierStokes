@@ -3,7 +3,6 @@
  * Jos Stam, Real-Time Fluid Dynamics for Games 29
  */
 
-#include <graphicsmath.h>
 #include <SDL.h>
 #include <stdio.h>
 #include <math.h>
@@ -14,20 +13,25 @@
 
 void quit(int);
 void quit(int, const char*);
+
 void UploadAndRender();
-void AddForces();
-void Diffuse(float*, float*);
-void Move();
-void HandleEvents();
 void PopulateGrids();
+void HandleEvents();
 void UpdatePixels(float*);
+
+void DensityStep();
+void VelocityStep();
+
+void Diffuse(int, float*, float*, float);
+void Advect(int, float*, float*, float*, float*);
+void Project();
 void SetBoundaries(float*, int);
 
 bool running = true;
 const int width = 100, height = 100;
 const int upscale = 5;
 const int vieww = width * upscale, viewh = height * upscale;
-const float dt = .01, diff = .01;
+const float dt = .01, diff = .01, visc = .01;;
 #define size		(width+2) * (height+2)
 #define IX(i, j)	((i) + (j)*(width+2))
 #define XY(i, j)	(((i) - 1) + ((j) - 1)*(width))
@@ -36,9 +40,17 @@ const float dt = .01, diff = .01;
 SDL_Window *window;
 SDL_Renderer *renderer;
 Uint32 pixels[width*height];
-vec2 u[size], u_prev[size];
+float u[size], u_prev[size];
+float v[size], v_prev[size];
 float dens[size], dens_prev[size];
 SDL_Texture *texture;
+
+template <typename T>
+T sgn(T t) { return (t < 0) ? T(-1) : T(1); }
+
+// ******
+//  Main
+// ******
 
 int main() {
 	// Initialize SDL stuff
@@ -55,15 +67,20 @@ int main() {
 	while (running) {
 		HandleEvents();
 		AddForces();
-		std::swap(dens_prev, dens);
-		Diffuse(dens_prev, dens);
+		std::swap(dens, dens_prev);
+		Diffuse(0, dens, dens_prev, diff);
+		//std::swap(dens, dens_prev);
+		Advect(0, dens, dens_prev, u, v);
+		Diffuse(1, u, u_prev, visc);
 		Move();
 		UpdatePixels(dens);
 		UploadAndRender();
 		SDL_Delay(100);
 		float a = 0;
-		for (int i = 0; i < size; i++) {
-			a += dens[i];
+		for (int i = 1; i <= width; i++) {
+			for (int j = 1; j <= height; j++) {
+				a += dens[IX(i, j)];
+			}
 		}
 		printf("%f\n", a);
 	}
@@ -88,9 +105,27 @@ void UpdatePixels(float *dens) {
 	for (int y = 1; y <= height; y++) {
 		for (int x = 1; x <= width; x++) {
 			int val = dens[IX(x, y)] * 255;
-			pixels[XY(x, y)] = val | val << 8 | val << 16;
+			#ifdef VECCOLS
+			float rbase = u[IX(x, y)]*128, gbase = v[IX(x, y)]*128;
+			int r = rbase >= 0 ? 128+rbase : 128-rbase;
+			r = std::max(0,  std::min(r, 255));
+			int g = gbase >= 0 ? 128+gbase : 128-gbase;
+			g = std::max(0, std::min(g, 255));
+			pixels[XY(x, y)] = r << 16 | g << 8 | val;
+			#else
+			pixels[XY(x, y)] = val << 16 | val << 8 | val;
+			#endif
 		}
 	}
+}
+
+// Thanks to Iñigo Quilez
+float almostIdentity( float x, float m, float n ) {
+    if( x>m ) return x;
+    const float a = 2.0f*n - m;
+    const float b = 2.0f*m - 3.0f*n;
+    const float t = x/m;
+    return (a*t + b)*t*t + n;
 }
 
 void PopulateGrids() {
@@ -99,6 +134,8 @@ void PopulateGrids() {
 			float dx = width/2 - x, dy = height/2 - y;
 			float rho = std::min(5 / (sqrt(dx * dx + dy * dy)+1), 1.0);
 			dens[IX(x, y)] = rho;
+			u[IX(x, y)] = -cos(dx/10);//(1/almostIdentity(abs(dx), 2, 1)) * (1/almostIdentity(y, 2, 1)) * sgn(dx) * 10;
+			v[IX(x, y)] = -cos(dx/20);
 		}
 	}
 }
@@ -128,18 +165,36 @@ void HandleEvents() {
 void AddForces() {
 }
 
-void Diffuse(float *prev, float *cur) {
+void Diffuse(int border, float *cur, float *prev, float diff) {
 	float a = dt * diff * width * height;
-	for (int i = 0; i < size; i++) { cur[i] = 0; }
 	for (int k = 0; k < 20; k++) {
 		for (int x = 1; x <= width; x++) {
 			for (int y = 1; y <= height; y++) {
 				cur[IX(x, y)] = (prev[IX(x, y)] + a*(cur[IX(x-1, y)] + cur[IX(x+1, y)] +
-													cur[IX(x, y-1)] + cur[IX(x, y+1)]))/(4*a);
+													 cur[IX(x, y-1)] + cur[IX(x, y+1)]))/(1+4*a);
 			}
 		}
-		SetBoundaries(cur, 0);
+		SetBoundaries(cur, border);
 	}
+}
+
+void Advect(int border, float *cur, float *prev, float *u, float *v) {
+	float dtx = dt * width, dty = dt * height;
+	int i0, i1, j0, j1;
+	float x, y, s0, s1, t0, t1;
+	for (int i = 1; i <= width; i++) {
+		for (int j = 1; j <= height; j++) {
+			float x = i-dtx*u[IX(i, j)], y = j-dty*v[IX(i, j)];
+			if (x < 0.5) x = 0.5; if (x > width + 0.5) x = width + 0.5;
+			i0 = (int) x; i1 = i0 + 1;
+			if (y < 0.5) y = 0.5; if (y > height + 0.5) y = height + 0.5;
+			j0 = (int) y; j1 = j0 + 1;
+			s1 = x - i0; s0 = 1 - s1; t1 = y - j0; t0 = 1 - t1;
+			cur[IX(i, j)] = s0*(t0*prev[IX(i0, j0)] + t1*prev[IX(i0, j1)])+
+							s1*(t0*prev[IX(i1, j0)] + t1*prev[IX(i1, j1)]);
+		}
+	}
+	SetBoundaries(cur, border); 
 }
 
 void Move() {
@@ -154,10 +209,6 @@ void SetBoundaries(float *dens, int b) {
 		dens[IX(x, 0)] = b==2 ? -dens[IX(x, 1)] : dens[IX(x, 1)];
 		dens[IX(x, height+1)] = b==2 ? -dens[IX(x, height)] : dens[IX(x, height)];
 	}
-	/*dens[IX(0, 0)] = 0.5 * (dens[IX(1, 0)] + dens[IX(0, 1)]); 
-	dens[IX(0, height+1)] = 0.5 * (dens[IX(1, height+1)] + dens[IX(0, height)]); 
-	dens[IX(width+1, 0)] = 0.5 * (dens[IX(width, 0)] + dens[IX(width+1, 1)]); 
-	dens[IX(width+1, height+1)] = 0.5 * (dens[IX(width, height+1)] + dens[IX(width+1, height)]); */
 }
 
 // *******************

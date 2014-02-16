@@ -5,10 +5,13 @@ OBJS = fluidmain.o
 all: $(APP)
 
 $(APP) : $(OBJS)
-	g++ -o $@ $< $(FLAGS) $(LIBS)
+	g++ -o $@ $< $(FLAGS) $(LIBS) -g
 
 %.o : %.cpp
-	g++ $< -c $(FLAGS)
+	g++ $< -c $(FLAGS) -g
 
 run:
 	./NavierStokes
+
+clean:
+	rm $(APP) $(OBJS)

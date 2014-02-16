@@ -28,10 +28,10 @@ void Project(float*, float*, float*, float*);
 void SetBoundaries(float*, int);
 
 bool running = true;
-const int width = 100, height = 100;
-const int upscale = 5;
+const int width = 128, height = 128;
+const int upscale = 3;
 const int vieww = width * upscale, viewh = height * upscale;
-const float dt = .01, diff = .01, visc = .01;;
+const float dt = .01, diff = .001, visc = .01;;
 #define size		(width+2) * (height+2)
 #define IX(i, j)	((i) + (j)*(width+2))
 #define XY(i, j)	(((i) - 1) + ((j) - 1)*(width))
@@ -70,7 +70,6 @@ int main() {
 		VelocityStep();
 		UpdatePixels(dens);
 		UploadAndRender();
-		SDL_Delay(100);
 		float a = 0;
 		for (int i = 1; i <= width; i++) {
 			for (int j = 1; j <= height; j++) {
@@ -168,6 +167,9 @@ void VelocityStep() {
 	std::swap(u, u_prev); Diffuse(1, u, u_prev, visc);
 	std::swap(v, v_prev); Diffuse(1, v, v_prev, visc);
 	Project(u, v, u_prev, v_prev);
+	std::swap(u, u_prev); std::swap(v, v_prev);
+	Advect(1, u, u_prev, u_prev, v_prev); Advect(2, v, v_prev, u_prev, v_prev);
+	Project(u, v, u_prev, v_prev);
 }
 
 
@@ -203,8 +205,35 @@ void Advect(int border, float *cur, float *prev, float *u, float *v) {
 	SetBoundaries(cur, border); 
 }
 
-void Project(float *u, float *v, float *u0, float *v0) {
+void Project(float *u, float *v, float *p, float *div) {
+	float x = 1.0/width, y = 1.0/height;
 
+	for (int i = 1; i <= width ; i++) { 
+		for (int j = 1; j <= height; j++) { 
+			div[IX(i,j)] = -0.5*x*(u[IX(i+1,j)]-u[IX(i-1,j)]+ 
+			v[IX(i,j+1)]-v[IX(i,j-1)]); 
+			p[IX(i,j)] = 0; 
+		} 
+	} 
+	SetBoundaries(div, 0); SetBoundaries(p, 0); 
+	 
+	for (int k = 0; k < 20; k++) { 
+		for (int i = 1; i <= width; i++) { 
+			for (int j = 1; j <= height; j++) { 
+				p[IX(i,j)] = (div[IX(i,j)]+p[IX(i-1,j)]+p[IX(i+1,j)]+ 
+				p[IX(i,j-1)]+p[IX(i,j+1)])/4; 
+			} 
+		} 
+		SetBoundaries(p, 0); 
+	} 
+	 
+	for (int i = 1; i <= width; i++) { 
+		for (int j = 1; j <= height; j++) { 
+			u[IX(i,j)] -= 0.5*(p[IX(i+1,j)]-p[IX(i-1,j)])/x; 
+			v[IX(i,j)] -= 0.5*(p[IX(i,j+1)]-p[IX(i,j-1)])/y; 
+		} 
+	} 
+	SetBoundaries(u, 1); SetBoundaries(v, 2); 
 }
 
 void SetBoundaries(float *dens, int b) { 

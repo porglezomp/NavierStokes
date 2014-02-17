@@ -8,9 +8,40 @@
 #include <math.h>
 #include <algorithm>
 #include <utility>
+#include <time.h>
+#include "MathSupport.hpp"
 extern "C" {
-#include "RGBE.h"
+	#include "RGBE.h"
 };
+
+/******************************************* USER CHANGES GO HERE ***********************************************/
+
+// ***************************************************
+//  Modify these to customize the initial conditions!
+// ***************************************************
+
+// Constants
+const int width = 384, height = 216, upscale = 3;
+const float diff = 0.0, visc = 0.0;
+
+// Initial density
+float DensityFunc(float x, float y) {
+	float dx = .5 - (float) x/width, dy = .5 - (float) y/height;
+	return saturate(sin(x*.1)*tan(y*.05));
+}
+
+// Initial velocity
+void VelocityFunc(float &u, float &v, float x, float y) {
+	float dx = .5 - (float) x/height, dy = .5 - (float) y/height;
+	u = rand()%11-5;
+	v = rand()%11-5;
+}
+
+/****************************************************************************************************************/
+
+// ***********
+//  Body code
+// ***********
 
 #define SDLCRASH	1
 
@@ -31,10 +62,7 @@ void Project(float*, float*, float*, float*);
 void SetBoundaries(float*, int);
 
 bool running = true;
-const int width = 384, height = 216;
-const int upscale = 3;
 const int vieww = width * upscale, viewh = height * upscale;
-const float diff = 0, visc = 0;
 float dt = .01, initialmass = 0;
 #define size		(width+2) * (height+2)
 #define IX(i, j)	((i) + (j)*(width+2))
@@ -51,9 +79,6 @@ float v[size], v_prev[size];
 float dens[size], dens_prev[size];
 float img[width*height][3];
 long long a, b;
-
-template <typename T>
-T sgn(T t) { return (t < 0) ? T(-1) : T(1); }
 
 // ******
 //  Main
@@ -79,14 +104,19 @@ int main(int argc, char **argv) {
 	int counter = 1;
 	// Mainloop
 	while (running) {
+		// Deltatime
 		b = a;
 		a = SDL_GetTicks();
-		dt = (a - b) / 10000.0;
+		dt = (a - b) / 10000.0; // Run at 1/10th speed
+
+		// Simulate the smoke
 		HandleEvents();
 		DensityStep();
 		VelocityStep();
 		UpdatePixels(dens);
 		UploadAndRender();
+		
+		// Prepare output
 		float mass = 0;
 		for (int i = 1; i <= width; i++) {
 			for (int j = 1; j <= height; j++) {
@@ -97,13 +127,15 @@ int main(int argc, char **argv) {
 				img[XY(i, j)][2] = p;
 			}
 		}
+
+		// Output
 		printf("%f%% mass\n", mass/initialmass * 100);
 		if (argc > 1) {
 			char name[1024];
 			sprintf(name, "%s%i.hdr", name1, counter++);
 			FILE *f = fopen(name, "wb");
 			RGBE_WriteHeader(f, width, height, NULL);
-			RGBE_WritePixels(f, (float *) img, width*height);
+			RGBE_WritePixels_RLE(f, (float *) img, width, height);
 			fclose(f);
 		}
 	}
@@ -142,24 +174,16 @@ void UpdatePixels(float *dens) {
 	}
 }
 
-// Thanks to Iñigo Quilez
-float almostIdentity( float x, float m, float n ) {
-    if( x>m ) return x;
-    const float a = 2.0f*n - m;
-    const float b = 2.0f*m - 3.0f*n;
-    const float t = x/m;
-    return (a*t + b)*t*t + n;
-}
-
 void PopulateGrids() {
 	for (int y = 1; y <= height; y++) {
 		for (int x = 1; x <= width; x++) {
-			float dx = .5 - (float) x/width, dy = .5 - (float) y/height;
-			float rho = std::min(5.0 / ((dx * dx + dy * dy)*100+1), 1.0);
+			float rho = DensityFunc(x, y);
 			dens[IX(x, y)] = rho;
 			initialmass += rho;
-			u[IX(x, y)] = tan(dy*8);//(1/almostIdentity(abs(dx), 2, 1)) * (1/almostIdentity(y, 2, 1)) * sgn(dx) * 10;
-			v[IX(x, y)] = -tan(dy*16);
+			float uvec, vvec;
+			VelocityFunc(uvec, vvec, x, y);
+			u[IX(x, y)] = uvec;
+			v[IX(x, y)] = vvec;
 		}
 	}
 }
@@ -195,7 +219,7 @@ void DensityStep() {
 
 void VelocityStep() {
 	std::swap(u, u_prev); Diffuse(1, u, u_prev, visc);
-	std::swap(v, v_prev); Diffuse(1, v, v_prev, visc);
+	std::swap(v, v_prev); Diffuse(2, v, v_prev, visc);
 	Project(u, v, u_prev, v_prev);
 	std::swap(u, u_prev); std::swap(v, v_prev);
 	Advect(1, u, u_prev, u_prev, v_prev); Advect(2, v, v_prev, u_prev, v_prev);

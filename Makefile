@@ -1,6 +1,6 @@
 APP = NavierStokes
-FLAGS = $(shell sdl2-config --cflags) -I$(HOME)/usr/include #$(shell Magick++-config --cxxflags)
-LIBS = $(shell sdl2-config --libs) -lpng -L$(HOME)/usr/lib #$(shell Magick++-config --libs)
+FLAGS = $(shell sdl2-config --cflags)
+LIBS = $(shell sdl2-config --libs)
 OBJS = fluidmain.o RGBE.o
 all: $(APP)
 

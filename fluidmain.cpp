@@ -34,8 +34,8 @@ bool running = true;
 const int width = 384, height = 216;
 const int upscale = 3;
 const int vieww = width * upscale, viewh = height * upscale;
-const float diff = 0, visc = 0;;
-float dt = .01;
+const float diff = 0, visc = 0;
+float dt = .01, initialmass = 0;
 #define size		(width+2) * (height+2)
 #define IX(i, j)	((i) + (j)*(width+2))
 #define XY(i, j)	(((i) - 1) + ((j) - 1)*(width))
@@ -44,10 +44,12 @@ float dt = .01;
 SDL_Window *window;
 SDL_Renderer *renderer;
 Uint32 pixels[width*height];
+SDL_Texture *texture;
+
 float u[size], u_prev[size];
 float v[size], v_prev[size];
 float dens[size], dens_prev[size];
-SDL_Texture *texture;
+float img[width*height][3];
 long long a, b;
 
 template <typename T>
@@ -56,9 +58,13 @@ T sgn(T t) { return (t < 0) ? T(-1) : T(1); }
 // ******
 //  Main
 // ******
-float img[width*height][3];
+const char* name1;
 
-int main() {
+int main(int argc, char **argv) {
+	if (argc > 1) {
+		name1 = argv[1];
+	}
+
 	// Initialize SDL stuff
 	if (SDL_Init(SDL_INIT_EVERYTHING) < 0) quit(SDLCRASH, "Could not initialize SDL");
 	SDL_CreateWindowAndRenderer(vieww, viewh, 0, &window, &renderer);
@@ -91,13 +97,15 @@ int main() {
 				img[XY(i, j)][2] = p;
 			}
 		}
-		char name[32];
-		/*sprintf(name, "frame%i.hdr", counter++);
-		FILE *f = fopen(name, "wb");
-		RGBE_WriteHeader(f, width, height, NULL);
-		RGBE_WritePixels(f, (float *) img, width*height);
-		fclose(f);*/
-		printf("%f\n", mass);
+		printf("%f%% mass\n", mass/initialmass * 100);
+		if (argc > 1) {
+			char name[1024];
+			sprintf(name, "%s%i.hdr", name1, counter++);
+			FILE *f = fopen(name, "wb");
+			RGBE_WriteHeader(f, width, height, NULL);
+			RGBE_WritePixels(f, (float *) img, width*height);
+			fclose(f);
+		}
 	}
 	
 	// Cleanup and quit
@@ -146,11 +154,12 @@ float almostIdentity( float x, float m, float n ) {
 void PopulateGrids() {
 	for (int y = 1; y <= height; y++) {
 		for (int x = 1; x <= width; x++) {
-			float dx = .5 - (float) x/width, dy = .5 - (float) y/width;
+			float dx = .5 - (float) x/width, dy = .5 - (float) y/height;
 			float rho = std::min(5.0 / ((dx * dx + dy * dy)*100+1), 1.0);
 			dens[IX(x, y)] = rho;
-			u[IX(x, y)] = -cos(dx*8);//(1/almostIdentity(abs(dx), 2, 1)) * (1/almostIdentity(y, 2, 1)) * sgn(dx) * 10;
-			v[IX(x, y)] = -tan(dx*16);
+			initialmass += rho;
+			u[IX(x, y)] = tan(dy*8);//(1/almostIdentity(abs(dx), 2, 1)) * (1/almostIdentity(y, 2, 1)) * sgn(dx) * 10;
+			v[IX(x, y)] = -tan(dy*16);
 		}
 	}
 }

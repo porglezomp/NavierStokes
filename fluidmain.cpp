@@ -8,7 +8,9 @@
 #include <math.h>
 #include <algorithm>
 #include <utility>
-#include "PngWriter.hpp"
+extern "C" {
+#include "RGBE.h"
+};
 
 #define SDLCRASH	1
 
@@ -37,7 +39,6 @@ float dt = .01;
 #define size		(width+2) * (height+2)
 #define IX(i, j)	((i) + (j)*(width+2))
 #define XY(i, j)	(((i) - 1) + ((j) - 1)*(width))
-PngWriter writer(width, height);
 
 // Graphics variables
 SDL_Window *window;
@@ -55,6 +56,7 @@ T sgn(T t) { return (t < 0) ? T(-1) : T(1); }
 // ******
 //  Main
 // ******
+float img[width*height][3];
 
 int main() {
 	// Initialize SDL stuff
@@ -73,7 +75,7 @@ int main() {
 	while (running) {
 		b = a;
 		a = SDL_GetTicks();
-		dt = (a - b) / 1000.0;
+		dt = (a - b) / 10000.0;
 		HandleEvents();
 		DensityStep();
 		VelocityStep();
@@ -82,22 +84,20 @@ int main() {
 		float mass = 0;
 		for (int i = 1; i <= width; i++) {
 			for (int j = 1; j <= height; j++) {
-				mass += dens[IX(i, j)];
-			}
-		}
-		for (int x = 1; x <= width; x++) {
-			for (int y = 1; y <= height; y++) {
-				int p = pixels[XY(x, y)];
-				int r = (p & (255<<16))>>16;
-				int g = (p & (255<<8))>>8;
-				int b = (p * 255);
-				writer.set(x-1, y-1, r, g, b);
+				float p = dens[IX(i, j)];
+				mass += p;
+				img[XY(i, j)][0] = p;
+				img[XY(i, j)][1] = p;
+				img[XY(i, j)][2] = p;
 			}
 		}
 		char name[32];
-		sprintf(name, "frame%i.png", counter++);
-		writer.write(name);
-		printf("%s %f\n", name, mass);
+		/*sprintf(name, "frame%i.hdr", counter++);
+		FILE *f = fopen(name, "wb");
+		RGBE_WriteHeader(f, width, height, NULL);
+		RGBE_WritePixels(f, (float *) img, width*height);
+		fclose(f);*/
+		printf("%f\n", mass);
 	}
 	
 	// Cleanup and quit
@@ -149,8 +149,8 @@ void PopulateGrids() {
 			float dx = .5 - (float) x/width, dy = .5 - (float) y/width;
 			float rho = std::min(5.0 / ((dx * dx + dy * dy)*100+1), 1.0);
 			dens[IX(x, y)] = rho;
-			u[IX(x, y)] = -cos(dx*10);//(1/almostIdentity(abs(dx), 2, 1)) * (1/almostIdentity(y, 2, 1)) * sgn(dx) * 10;
-			v[IX(x, y)] = -cos(dx*10);
+			u[IX(x, y)] = -cos(dx*8);//(1/almostIdentity(abs(dx), 2, 1)) * (1/almostIdentity(y, 2, 1)) * sgn(dx) * 10;
+			v[IX(x, y)] = -tan(dx*16);
 		}
 	}
 }

@@ -50,8 +50,8 @@ class PngWriter {
   
 private:
   
-  unsigned char (*buffer)[3]; // 0 <= r,g,b < 255 
-  int nx,ny;
+  int16_t (*buffer); // 0 <= r,g,b < 255 
+  int nx, ny;
   
  public:
   
@@ -59,13 +59,11 @@ private:
     
     nx = width;
     ny = height;
-    buffer = new unsigned char[nx*ny][3];
+    buffer = new int16_t[nx*ny];
 
     // fill buffer with a "nice" cyan [73,175,205] -- eventually a designer should choose this ;)
     for (int i = 0; i < nx*ny; ++i) {
-      buffer[i][0] = 73;
-      buffer[i][1] = 175;
-      buffer[i][2] = 205;
+      buffer[i] = 0;
     }
 
   }
@@ -76,12 +74,11 @@ private:
 
   }
   
-  void set(const int i,const int j,const unsigned char r,const unsigned char g,const unsigned char b) {
+  static const int16_t multiplier = 255 | 255<<8;
+  void set(const int i, const int j, float f) {
     // recall that for png files, the pixels are ordered from the top left, so modify 
     // this set routine's passed j so that zero is at the bottom left...
-    buffer[(ny-j-1)*nx+i][0] = r;
-    buffer[(ny-j-1)*nx+i][1] = g;
-    buffer[(ny-j-1)*nx+i][2] = b;
+    buffer[(i+nx*(ny-j)] = (f-.5)*multiplier;
   }
   
   void write(char * filename) {
@@ -113,8 +110,8 @@ private:
 
     png_set_IHDR(png_ptr, info_ptr,
 		 nx, ny,             // width, height
-		 8,                  // bits per pixel -- 16 does not work with blockbuster
-		 PNG_COLOR_TYPE_RGB, // non-alpha options are PNG_COLOR_TYPE_RGB,PNG_COLOR_TYPE_GRAY,
+		 16,                  // bits per pixel -- 16 does not work with blockbuster
+		 PNG_COLOR_TYPE_GRAY, // non-alpha options are PNG_COLOR_TYPE_RGB,PNG_COLOR_TYPE_GRAY,
 		 PNG_INTERLACE_NONE,
 		 PNG_COMPRESSION_TYPE_DEFAULT,
 		 PNG_FILTER_TYPE_DEFAULT);

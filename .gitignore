@@ -27,4 +27,6 @@
 # Executable
 NavierStokes
 
+# Images
 *.png
+*.hdr
